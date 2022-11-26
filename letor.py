@@ -4,16 +4,16 @@ import random
 
 import lightgbm as lgb
 import numpy as np
-
-from gensim.models import TfidfModel
-from gensim.models import LsiModel
 from gensim.corpora import Dictionary
+from gensim.models import LsiModel
 from scipy.spatial.distance import cosine
+
+from bsbi import preprocess_text
 
 
 class Data:
     @staticmethod
-    def parse_documents(doc_path: str) -> dict:
+    def parse_documents(doc_path: str) -> dict[str, list[str]]:
         documents = {}
         with open(doc_path) as file:
             for line in file:
@@ -22,16 +22,16 @@ class Data:
         return documents
 
     @staticmethod
-    def parse_queries(q_path: str) -> dict:
+    def parse_queries(q_path: str) -> dict[str, list[str]]:
         queries = {}
-        with open(q_path) as file:
+        with open(q_path,"r",encoding='utf-8') as file:
             for line in file:
                 q_id, content = line.split("\t")
                 queries[q_id] = content.split()
         return queries
 
     @staticmethod
-    def parse_qrels(documents: dict, queries: dict, qrels_path: str) -> tuple:
+    def parse_qrels(documents: dict, queries: dict, qrels_path: str) -> tuple[list[int], list[tuple[list[str], list[str], int]]]:
         NUM_NEGATIVES = 1
 
         q_docs_rel = {}  # grouping by q_id terlebih dahulu
@@ -76,16 +76,16 @@ class LSIModel:
         self.save_model(self.model)
 
     def save_model(self, model) -> None:
-        file_name = f"model/lsa-{int(datetime.datetime.now().timestamp())}.pkl"
+        file_name = f"model/lsi-{int(datetime.datetime.now().timestamp())}.pkl"
         with open(file_name, "wb") as f:
             pickle.dump([model], f)
 
     def load_model(self, timestamp: int) -> None:
-        file_name = f"model/lsa-{timestamp}.pkl"
+        file_name = f"model/lsi-{timestamp}.pkl"
         with open(file_name, "rb") as f:
             [self.model] = pickle.load(f)
 
-    def parse_dataset(self, dataset: list):
+    def parse_dataset(self, dataset: list) -> tuple:
         X = []
         Y = []
 
@@ -98,7 +98,7 @@ class LSIModel:
 
         return X, Y
 
-    def features(self, query: str, doc: str) -> list:
+    def features(self, query: list[str], doc: list[str]) -> list[float]:
         v_q = self.vector_rep(query)
         v_d = self.vector_rep(doc)
         q = set(query)
@@ -107,21 +107,17 @@ class LSIModel:
         jaccard = len(q & d) / len(q | d)
         return v_q + v_d + [jaccard] + [cosine_dist]
 
-    def vector_rep(self, text: str) -> list:
+    def vector_rep(self, text: list[str]) -> list:
         rep = [
             topic_value
             for (_, topic_value) in self.model[self.dictionary.doc2bow(text)]
         ]
-        if len(rep) == self.NUM_LATENT_TOPICS:
-            return rep
-        return [0.0] * self.NUM_LATENT_TOPICS
+        return rep if len(rep) == self.NUM_LATENT_TOPICS else [0.] * self.NUM_LATENT_TOPICS
 
 
 class Ranker:
     def __init__(self, model: LSIModel) -> None:
         self.model = model
-
-    def make_ranker(self) -> None:
         self.ranker = lgb.LGBMRanker(
             objective="lambdarank",
             boosting_type="gbdt",
@@ -132,8 +128,7 @@ class Ranker:
             learning_rate=0.02,
             max_depth=-1,
         )
-        self.save_ranker(self.ranker)
-
+        
     def save_ranker(self, ranker) -> None:
         file_name = f"model/lgbm-{int(datetime.datetime.now().timestamp())}.pkl"
         with open(file_name, "wb") as f:
@@ -145,9 +140,10 @@ class Ranker:
             [self.ranker] = pickle.load(f)
 
     def fit(self, X, Y, group_qid_count: list) -> None:
-        return self.ranker.fit(X, Y, group=group_qid_count, verbose=10)
+        self.ranker.fit(X, Y, group=group_qid_count)
+        self.save_ranker(self.ranker)
 
-    def predict(self, query, docs: list) -> list:
+    def predict(self, query, docs: list):
         X_unseen = []
         for _, doc in docs:
             X_unseen.append(self.model.features(query.split(), doc.split()))
@@ -156,7 +152,7 @@ class Ranker:
         scores = self.ranker.predict(X_unseen)
         return scores
 
-    def get_serp(self, docs: list, scores: list) -> list:
+    def get_serp(self, docs: list, scores) -> list:
         did_scores = [x for x in zip([did for (did, _) in docs], scores)]
         sorted_did_scores = sorted(did_scores, key=lambda tup: tup[1], reverse=True)
         return sorted_did_scores
@@ -188,35 +184,44 @@ if __name__ == "__main__":
         ),
     ]
 
-    documents = Data.parse_documents("nfcorpus/train.docs")
+    documents = Data.parse_documents("nfcorpus\\train.docs")
     # test untuk melihat isi dari 2 dokumen
+    print("Document Test:")
     print(documents["MED-329"])
     print(documents["MED-330"])
+    print()
 
-    queries = Data.parse_queries("nfcorpus/train.vid-desc.queries")
+    queries = Data.parse_queries("nfcorpus\\train.vid-desc.queries")
     # test untuk melihat isi dari 2 query
+    print("Query Test:")
     print(queries["PLAIN-2428"])
     print(queries["PLAIN-2435"])
+    print()
 
     group_qid_count, dataset = Data.parse_qrels(
-        documents, queries, "nfcorpus/train.3-2-1.qrel"
+        documents, queries, "nfcorpus\\train.3-2-1.qrel"
     )
-    # test
+    # test qrels
     print("number of Q-D pairs:", len(dataset))
     print("group_qid_count:", group_qid_count)
     assert sum(group_qid_count) == len(dataset), "ada yang salah"
+    print("Dataset Test:")
     print(dataset[:2])
+    print()
 
     lsi = LSIModel()
-    lsi.make_model(documents)
+    # lsi.make_model(documents)
+    lsi.load_model(1669482083)
+    # X, Y = lsi.parse_dataset(dataset)
     # test
+    print("Vector Rep Test:")
     print(lsi.vector_rep(documents["MED-329"]))
     print(lsi.vector_rep(queries["PLAIN-2435"]))
+    print()
     
-    X, Y = lsi.parse_dataset(dataset)
     ranker = Ranker(lsi)
-    ranker.make_ranker()
-    ranker.fit(X, Y, group_qid_count)
+    ranker.load_ranker(1669482105)
+    # ranker.fit(X, Y, group_qid_count)
     scores = ranker.predict(test_query, test_docs)
     sorted_did_scores = ranker.get_serp(test_docs, scores)
 

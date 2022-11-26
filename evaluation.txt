@@ -1,0 +1,21 @@
+WITHOUT LETOR
+Hasil evaluasi ranked retrieval TF-IDF terhadap 30 queries
+RBP score = 0.6487068785198612
+DCG score = 6.048662734833553
+AP score  = 0.5019696601144559
+
+Hasil evaluasi ranked retrieval BM25 terhadap 30 queries
+RBP score = 0.6849507783814217
+DCG score = 6.223564436959314
+AP score  = 0.5400276112670377
+
+WITH LETOR
+Hasil evaluasi ranked retrieval TF-IDF terhadap 30 queries
+RBP score = 0.4602715331790936
+DCG score = 5.316002611138944
+AP score  = 0.32663032654106033
+
+Hasil evaluasi ranked retrieval BM25 terhadap 30 queries
+RBP score = 0.462956022786159
+DCG score = 5.328905841212335
+AP score  = 0.32927438689443406

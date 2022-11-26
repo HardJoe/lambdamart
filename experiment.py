@@ -1,8 +1,9 @@
-import re
-import inspect
 import math
-from bsbi import BSBIIndex
+import re
+
+from bsbi import BSBIIndex, preprocess_text
 from compression import VBEPostings
+from letor import Data, LSIModel, Ranker
 
 ######## >>>>> 3 IR metrics: RBP p = 0.8, DCG, dan AP
 
@@ -115,8 +116,7 @@ def load_qrels(qrel_file="qrels.txt", max_q_id=30, max_doc_id=1033):
 
 ######## >>>>> EVALUASI !
 
-
-def eval(qrels, query_file="queries.txt", k=1000):
+def eval(qrels, rank_args=None, query_file="queries.txt", k=1000):
     """
     loop ke semua 30 query, hitung score di setiap query,
     lalu hitung MEAN SCORE over those 30 queries.
@@ -126,61 +126,92 @@ def eval(qrels, query_file="queries.txt", k=1000):
         data_dir="collection", postings_encoding=VBEPostings, output_dir="index"
     )
 
-    tfidf_methods = [
-        BSBI_instance.retrieve_tfidf,
-        BSBI_instance.retrieve_tfidf_apnbnn,
-        BSBI_instance.retrieve_tfidf_ntnlnn,
-    ]
-    for method in tfidf_methods:
-        with open(query_file) as file:
-            rbp_scores = []
-            dcg_scores = []
-            ap_scores = []
-            for qline in file:
-                parts = qline.strip().split()
-                qid = parts[0]
-                query = " ".join(parts[1:])
+    with open(query_file) as file:
+        rbp_scores = []
+        dcg_scores = []
+        ap_scores = []
 
-                # HATI-HATI, doc id saat indexing bisa jadi berbeda dengan doc id
-                # yang tertera di qrels
-                ranking = []
-                for (score, doc) in method(query, k=k):
-                    did = int(re.search(r".*\\.*\\(.*)\.txt", doc).group(1))
-                    ranking.append(qrels[qid][did])
-                rbp_scores.append(rbp(ranking))
-                dcg_scores.append(dcg(ranking))
-                ap_scores.append(ap(ranking))
+        for qline in file:
+            parts = qline.strip().split()
+            qid = parts[0]
+            query = " ".join(parts[1:])
 
-        print(f"Hasil evaluasi {method.__name__} terhadap 30 queries")
-        print("RBP score =", sum(rbp_scores) / len(rbp_scores))
-        print("DCG score =", sum(dcg_scores) / len(dcg_scores))
-        print("AP score  =", sum(ap_scores) / len(ap_scores))
+            ranking = []
+            if not rank_args:
+                retrieved_data = BSBI_instance.retrieve_tfidf(query, k=k)
+                scoring_method = "TF-IDF"
+            else:
+                retrieved_data = BSBI_instance.retrieve_bm25(query, *rank_args, k=k)
+                scoring_method = "BM25"
 
-    bm25_args = [[1, 1], [1.25, 0.75], [1.5, 1.25], [1.75, 0.25], [2, 0.5]]
-    for args in bm25_args:
-        with open(query_file) as file:
-            rbp_scores = []
-            dcg_scores = []
-            ap_scores = []
-            for qline in file:
-                parts = qline.strip().split()
-                qid = parts[0]
-                query = " ".join(parts[1:])
+            for (_, doc_path) in retrieved_data:
+                did = int(re.search(r".*\\.*\\(.*)\.txt", doc_path).group(1))
+                ranking.append(qrels[qid][did])
 
-                # HATI-HATI, doc id saat indexing bisa jadi berbeda dengan doc id
-                # yang tertera di qrels
-                ranking = []
-                for (score, doc) in BSBI_instance.retrieve_bm25(query, *args, k=k):
-                    did = int(re.search(r".*\\.*\\(.*)\.txt", doc).group(1))
-                    ranking.append(qrels[qid][did])
-                rbp_scores.append(rbp(ranking))
-                dcg_scores.append(dcg(ranking))
-                ap_scores.append(ap(ranking))
+            rbp_scores.append(rbp(ranking))
+            dcg_scores.append(dcg(ranking))
+            ap_scores.append(ap(ranking))
 
-        print(f"Hasil evaluasi retrieve_bm25 {args} terhadap 30 queries")
-        print("RBP score =", sum(rbp_scores) / len(rbp_scores))
-        print("DCG score =", sum(dcg_scores) / len(dcg_scores))
-        print("AP score  =", sum(ap_scores) / len(ap_scores))
+    print(f"Hasil evaluasi ranked retrieval {scoring_method} terhadap 30 queries")
+    print("RBP score =", sum(rbp_scores) / len(rbp_scores))
+    print("DCG score =", sum(dcg_scores) / len(dcg_scores))
+    print("AP score  =", sum(ap_scores) / len(ap_scores))
+
+
+def eval_letor(qrels, rank_args=None, query_file="queries.txt", k=1000):
+    # documents = Data.parse_documents("nfcorpus\\train.docs")
+    # queries = Data.parse_queries("nfcorpus\\train.vid-desc.queries")
+    # group_qid_count, dataset = Data.parse_qrels(documents, queries, "nfcorpus\\train.3-2-1.qrel")
+
+    lsi = LSIModel()
+    lsi.load_model(1669482083)
+
+    ranker = Ranker(lsi)
+    ranker.load_ranker(1669482105)
+    
+    BSBI_instance = BSBIIndex(
+        data_dir="collection", postings_encoding=VBEPostings, output_dir="index"
+    )
+
+    with open(query_file) as file:
+        rbp_scores = []
+        dcg_scores = []
+        ap_scores = []
+
+        for qline in file:
+            parts = qline.strip().split()
+            qid = parts[0]
+            query = " ".join(parts[1:])
+
+            ranking = []
+            if not rank_args:
+                retrieved_data = BSBI_instance.retrieve_tfidf(query, k=k)
+                scoring_method = "TF-IDF"
+            else:
+                retrieved_data = BSBI_instance.retrieve_bm25(query, *rank_args, k=k)
+                scoring_method = "BM25"
+
+            docs = []
+            for (_, doc_path) in retrieved_data:
+                did = int(re.search(r".*\\.*\\(.*)\.txt", doc_path).group(1))
+                with open(doc_path) as f:
+                    terms = preprocess_text(f.read())
+                    doc = " ".join(terms)
+                docs.append((did, doc))
+            scores = ranker.predict(query, docs)
+            sorted_did_scores = ranker.get_serp(docs, scores)
+
+            for (did, _) in sorted_did_scores:
+                ranking.append(qrels[qid][did])
+
+            rbp_scores.append(rbp(ranking))
+            dcg_scores.append(dcg(ranking))
+            ap_scores.append(ap(ranking))
+
+    print(f"Hasil evaluasi ranked retrieval {scoring_method} terhadap 30 queries")
+    print("RBP score =", sum(rbp_scores) / len(rbp_scores))
+    print("DCG score =", sum(dcg_scores) / len(dcg_scores))
+    print("AP score  =", sum(ap_scores) / len(ap_scores))
 
 
 if __name__ == "__main__":
@@ -190,3 +221,7 @@ if __name__ == "__main__":
     assert qrels["Q1"][300] == 0, "qrels salah"
 
     eval(qrels)
+    eval(qrels, [2, 0.75])
+
+    eval_letor(qrels)
+    eval_letor(qrels, [2, 0.75])
