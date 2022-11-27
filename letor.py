@@ -8,8 +8,6 @@ from gensim.corpora import Dictionary
 from gensim.models import LsiModel
 from scipy.spatial.distance import cosine
 
-from bsbi import preprocess_text
-
 
 class Data:
     @staticmethod
@@ -185,22 +183,34 @@ if __name__ == "__main__":
     ]
 
     documents = Data.parse_documents("nfcorpus\\train.docs")
+    queries = Data.parse_queries("nfcorpus\\train.vid-desc.queries")
+    group_qid_count, dataset = Data.parse_qrels(
+        documents, queries, "nfcorpus\\train.3-2-1.qrel"
+    )
+
+    lsi = LSIModel()
+    # lsi.make_model(documents)
+    lsi.load_model(1669482083)
+    # X, Y = lsi.parse_dataset(dataset)
+    
+    ranker = Ranker(lsi)
+    ranker.load_ranker(1669482105)
+    # ranker.fit(X, Y, group_qid_count)
+    scores = ranker.predict(test_query, test_docs)
+    sorted_did_scores = ranker.get_serp(test_docs, scores)
+
     # test untuk melihat isi dari 2 dokumen
     print("Document Test:")
     print(documents["MED-329"])
     print(documents["MED-330"])
     print()
 
-    queries = Data.parse_queries("nfcorpus\\train.vid-desc.queries")
     # test untuk melihat isi dari 2 query
     print("Query Test:")
     print(queries["PLAIN-2428"])
     print(queries["PLAIN-2435"])
     print()
 
-    group_qid_count, dataset = Data.parse_qrels(
-        documents, queries, "nfcorpus\\train.3-2-1.qrel"
-    )
     # test qrels
     print("number of Q-D pairs:", len(dataset))
     print("group_qid_count:", group_qid_count)
@@ -209,21 +219,11 @@ if __name__ == "__main__":
     print(dataset[:2])
     print()
 
-    lsi = LSIModel()
-    # lsi.make_model(documents)
-    lsi.load_model(1669482083)
-    # X, Y = lsi.parse_dataset(dataset)
-    # test
+    # test vector rep
     print("Vector Rep Test:")
     print(lsi.vector_rep(documents["MED-329"]))
     print(lsi.vector_rep(queries["PLAIN-2435"]))
     print()
-    
-    ranker = Ranker(lsi)
-    ranker.load_ranker(1669482105)
-    # ranker.fit(X, Y, group_qid_count)
-    scores = ranker.predict(test_query, test_docs)
-    sorted_did_scores = ranker.get_serp(test_docs, scores)
 
     # test SERP dari LGBMRanker
     print("Query        :", test_query)

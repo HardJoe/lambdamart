@@ -1,0 +1,39 @@
+EVALUASI TP3 IR
+Jonathan Amadeus Hartman - 1906400261
+
+WITHOUT LETOR
+Hasil evaluasi ranked retrieval TF-IDF terhadap 30 queries
+RBP score = 0.65
+DCG score = 6.05
+AP score  = 0.50
+
+Hasil evaluasi ranked retrieval BM25 terhadap 30 queries
+RBP score = 0.68
+DCG score = 6.22
+AP score  = 0.54
+
+WITH LETOR
+Hasil evaluasi ranked retrieval TF-IDF terhadap 30 queries
+RBP score = 0.46
+DCG score = 5.32
+AP score  = 0.33
+
+Hasil evaluasi ranked retrieval BM25 terhadap 30 queries
+RBP score = 0.46
+DCG score = 5.33
+AP score  = 0.33
+
+TF-IDF menggunakan SMART notation ltn.bnn, BM25 menggunakan k1 = 2 dan b = 0.75.
+
+Dapat dilihat bahwa hasil evaluasi SERP dengan LETOR jauh lebih buruk dibanding tanpa LETOR.
+Artinya, setelah dilakukan ranking ulang dengan LETOR, pada kebanyakan query,
+urutan dokumen pada SERP menjadi kurang relevan sesuai query yang diberikan.
+
+Hal ini mungkin disebabkan oleh:
+- Training dataset yang kurang banyak
+- Tidak adanya validation set (setidaknya pada tutorial di Colab)
+- Terdapatnya perbedaan atau "gap" yang signifikan antara training set dengan test set (dari index)
+
+Referensi:
+- https://towardsdatascience.com/when-to-use-a-machine-learned-vs-score-based-search-ranker-aa8762cd9aa9
+- https://lucidworks.com/post/abcs-learning-to-rank/

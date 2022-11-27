@@ -159,10 +159,7 @@ def eval(qrels, rank_args=None, query_file="queries.txt", k=1000):
 
 
 def eval_letor(qrels, rank_args=None, query_file="queries.txt", k=1000):
-    # documents = Data.parse_documents("nfcorpus\\train.docs")
-    # queries = Data.parse_queries("nfcorpus\\train.vid-desc.queries")
-    # group_qid_count, dataset = Data.parse_qrels(documents, queries, "nfcorpus\\train.3-2-1.qrel")
-
+    # model lsi dan lgbm sudah di train di main letor.py
     lsi = LSIModel()
     lsi.load_model(1669482083)
 
